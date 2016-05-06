@@ -1,0 +1,34 @@
+#!/bin/sh
+
+# Create a 'magento' account with password 'magento' to own the source files.
+useradd -m -s /bin/bash -p $(openssl passwd -1 ${MAGENTO_PASSWORD}) -G sudo ${MAGENTO_USER}
+
+# Add the Apache virtual host file
+cp /scripts/install-magento-magento.conf /etc/apache2/sites-enabled/magento.conf
+
+# Created the /magento2 home directory.
+mkdir /magento2
+chown ${MAGENTO_USER}:${MAGENTO_GROUP} /magento2
+cd /magento2
+
+# Overwrite apache config file to use /magento2 instead of /var/www/html
+cp /scripts/install-magento-apache2.conf /etc/apache2/apache2.conf
+
+# Run Apache as user 'magento' as well.
+sed -i -e 's/www-data/magento/g' /etc/apache2/envvars
+sed -i -e 's/www-data/magento/g' /etc/apache2/apache2.conf
+
+# Set up cron jobs
+service cron start
+
+(
+    echo "*/1 * * * * /usr/local/bin/php -c /usr/local/etc/php/php.ini /magento2/bin/magento cron:run"
+    echo "*/1 * * * * /usr/local/bin/php -c /usr/local/etc/php/php.ini /magento2/update/cron.php"
+    echo "*/1 * * * * /usr/local/bin/php -c /usr/local/etc/php/php.ini /magento2/bin/magento setup:cron:run"
+) | crontab -u ${MAGENTO_USER} -
+
+# Set up .bashrc file
+sudo -u ${MAGENTO_USER} sh -c "echo 'export PATH=\${PATH}:/magento2/bin' >> /home/magento/.bashrc"
+sudo -u ${MAGENTO_USER} sh -c "echo 'PS1=m2$\ ' >> /home/magento/.bashrc"
+echo 'if [ $PPID == 0 ]; then exec sudo -u magento bash ; fi' >> /root/.bashrc
+
